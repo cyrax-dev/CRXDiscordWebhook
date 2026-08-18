@@ -1,52 +1,80 @@
-x-app: &app
-  image: ${APP_IMAGE:-ghcr.io/cyrax-dev/crx-discord-webhook:latest}
-  pull_policy: always
-  restart: unless-stopped
-  init: true
-  env_file:
-    - .env
-  environment:
-    APP_PORT: "8000"
-    REDIS_URL: redis://redis:6379
-  depends_on:
-    redis:
-      condition: service_healthy
-  stop_grace_period: 20s
-
 services:
   backend:
-    <<: *app
-    container_name: crx-discord-webhook-backend
+    container_name: crx-discord-webhook
+    image: ${APP_IMAGE:-ghcr.io/cyrax-dev/crx-discord-webhook:latest}
+    pull_policy: always
     command: ["bun", "run", "start"]
+    restart: unless-stopped
+    init: true
+
+    environment:
+      APP_PORT: ${APP_PORT:-8000}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      QUEUE_MAX_BACKLOG: ${QUEUE_MAX_BACKLOG:-1000}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-8}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      DISCORD_REQUEST_TIMEOUT_MS: ${DISCORD_REQUEST_TIMEOUT_MS:-10000}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-15000}
+
     expose:
-      - "8000"
+      - "${APP_PORT:-8000}"
+
     networks:
       - proxy
       - app
+
+    depends_on:
+      redis:
+        condition: service_healthy
+
     healthcheck:
       test:
-        [
-          "CMD",
-          "bun",
-          "-e",
-          "const response = await fetch('http://127.0.0.1:8000/health/ready'); process.exit(response.ok ? 0 : 1)",
-        ]
+        - CMD
+        - bun
+        - -e
+        - "const response = await fetch('http://127.0.0.1:${APP_PORT:-8000}/health/ready'); process.exit(response.ok ? 0 : 1)"
       interval: 10s
       timeout: 3s
       retries: 5
       start_period: 10s
 
+    stop_grace_period: 20s
+
   worker:
-    <<: *app
     container_name: crx-discord-webhook-worker
+    image: ${APP_IMAGE:-ghcr.io/cyrax-dev/crx-discord-webhook:latest}
+    pull_policy: always
     command: ["bun", "run", "start:worker"]
+    restart: unless-stopped
+    init: true
+
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      DISCORD_REQUEST_TIMEOUT_MS: ${DISCORD_REQUEST_TIMEOUT_MS:-10000}
+      SHUTDOWN_TIMEOUT_MS: ${SHUTDOWN_TIMEOUT_MS:-15000}
+      APP_PORT: ${APP_PORT:-8000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      QUEUE_MAX_BACKLOG: ${QUEUE_MAX_BACKLOG:-1000}
+      JOB_MAX_ATTEMPTS: ${JOB_MAX_ATTEMPTS:-8}
+
     networks:
       - app
 
+    depends_on:
+      redis:
+        condition: service_healthy
+
+    stop_grace_period: 20s
+
   redis:
-    image: redis:7.4-alpine
     container_name: crx-discord-webhook-redis
+    image: redis:7.4-alpine
     restart: unless-stopped
+
     command:
       - redis-server
       - --appendonly
@@ -57,15 +85,19 @@ services:
       - 512mb
       - --maxmemory-policy
       - noeviction
+
     volumes:
       - redis-data:/data
+
     networks:
       - app
+
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 10
+
     stop_grace_period: 30s
 
 networks:
