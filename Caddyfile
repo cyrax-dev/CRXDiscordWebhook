@@ -1,0 +1,13 @@
+webhook.example.com {
+    @webhooks path /api/webhooks/*
+
+    request_body @webhooks {
+        max_size 64KB
+    }
+
+    log_skip @webhooks
+
+    reverse_proxy crx-discord-webhook-backend:8000 {
+        header_up X-Real-IP {remote_host}
+    }
+}

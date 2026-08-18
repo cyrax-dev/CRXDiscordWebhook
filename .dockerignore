@@ -5,6 +5,14 @@
 node_modules
 dist
 .git
+.gitignore
 .vscode
-Taskfile.yaml
+graphify-out
+coverage
+*.log
+compose*.yaml
+compose*.yml
+Dockerfile*
 *.md
+Caddyfile
+.prettierrc

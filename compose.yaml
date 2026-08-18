@@ -1,0 +1,78 @@
+x-app: &app
+  image: ${APP_IMAGE:-ghcr.io/cyrax-dev/crx-discord-webhook:latest}
+  pull_policy: always
+  restart: unless-stopped
+  init: true
+  env_file:
+    - .env
+  environment:
+    APP_PORT: "8000"
+    REDIS_URL: redis://redis:6379
+  depends_on:
+    redis:
+      condition: service_healthy
+  stop_grace_period: 20s
+
+services:
+  backend:
+    <<: *app
+    container_name: crx-discord-webhook-backend
+    command: ["bun", "run", "start"]
+    expose:
+      - "8000"
+    networks:
+      - proxy
+      - app
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "const response = await fetch('http://127.0.0.1:8000/health/ready'); process.exit(response.ok ? 0 : 1)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    <<: *app
+    container_name: crx-discord-webhook-worker
+    command: ["bun", "run", "start:worker"]
+    networks:
+      - app
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: crx-discord-webhook-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --appendfsync
+      - everysec
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - noeviction
+    volumes:
+      - redis-data:/data
+    networks:
+      - app
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    stop_grace_period: 30s
+
+networks:
+  proxy:
+    external: true
+  app:
+    driver: bridge
+
+volumes:
+  redis-data:
