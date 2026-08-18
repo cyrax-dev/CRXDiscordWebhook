@@ -1,0 +1,10 @@
+# Секреты в образ попадать не должны ни при каких обстоятельствах.
+.env
+.env.*
+
+node_modules
+dist
+.git
+.vscode
+Taskfile.yaml
+*.md
